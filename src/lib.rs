@@ -1,10 +1,9 @@
 use std::fs;
-use std::path::Path;
 use std::collections::HashMap;
 #[derive(Debug)]
 pub struct VirtualMachine {
-    name: String,
-    path: String,
+    pub name: String,
+    pub path: String,
 }
 pub struct VMdir {
     pub basedir: String,
@@ -32,27 +31,30 @@ impl VMdir {
     
     pub fn get_vms(&self) -> HashMap<String, VirtualMachine> {
         let mut vmlist = HashMap::new();
-        for indir in &self.dir {
-            let vm_dir = fs::read_dir(indir).unwrap();
-            for i in vm_dir{
-                let temp = String::from(i.unwrap().path().to_str().unwrap());
-                let mut key_name = String::new();
-
-                if temp.ends_with(".vmx") {
-                    let name = Path::new(&temp);
-                    let vm = VirtualMachine {
-                        name: String::from(name.file_stem().unwrap().to_str().unwrap()),
-                        path: temp,
-                    };
-                    vmlist.insert(String::from(&vm.name),vm);
+        for vm_dir in &self.dir {
+            let mut vm_name = String::from(vm_dir.split("\\").last().unwrap());
+            let mut path = String::new();
+            let name = vm_name.clone();
+            for i in fs::read_dir(&vm_dir).unwrap() {
+                let file_path = String::from(i.unwrap().path().to_str().unwrap());
+                if file_path.ends_with(".alias") {
+                    vm_name = String::from(file_path.split("\\").last().unwrap().split(".").next().unwrap());
+                } else if file_path.ends_with(".vmx") {
+                    path = file_path;
                 }
             }
+            if !path.is_empty() {
+                vmlist.insert(vm_name, VirtualMachine::new(name, path));
+            }
         }
-        vmlist
+        vmlist   
     }
 }
 
 impl VirtualMachine {
+    pub fn new(name:String, path:String) -> VirtualMachine {
+        VirtualMachine { name, path }
+    }
     pub fn start(&self){
         let command = format!("vmrun start \"{}\" nogui", self.path);
         println!("{}",command);
