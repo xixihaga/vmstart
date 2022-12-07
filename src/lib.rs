@@ -1,20 +1,23 @@
 use std::fs;
 use std::collections::HashMap;
+use std::path::{PathBuf};
 #[derive(Debug)]
 pub struct VirtualMachine {
     pub name: String,
     pub path: String,
 }
-pub struct VMdir {
+#[derive(Debug)]
+pub struct VMS {
     pub basedir: String,
-    pub dir:Vec<String>
+    pub dir:Vec<String>,
+    pub vms:Option<HashMap<String, VirtualMachine>>
 }
 
-impl VMdir {
-    pub fn new(basedir: &str) -> VMdir{
+impl VMS{
+    pub fn new(basedir: &str) -> VMS{
         let basedir = String::from(basedir);
-        let dir =VMdir::unwrap_dir(&basedir);
-        VMdir{basedir, dir}
+        let dir =VMS::unwrap_dir(&basedir);
+        VMS{basedir, dir, vms:Option::None}
     }
 
     fn unwrap_dir(basedir: &str) -> Vec<String>{
@@ -28,8 +31,7 @@ impl VMdir {
         }
         dir
     }
-    
-    pub fn get_vms(&self) -> HashMap<String, VirtualMachine> {
+    pub fn init(&mut self){
         let mut vmlist = HashMap::new();
         for vm_dir in &self.dir {
             let mut vm_name = String::from(vm_dir.split("\\").last().unwrap());
@@ -47,7 +49,7 @@ impl VMdir {
                 vmlist.insert(vm_name, VirtualMachine::new(name, path));
             }
         }
-        vmlist   
+        self.vms = Some(vmlist); 
     }
 }
 
@@ -59,4 +61,30 @@ impl VirtualMachine {
         let command = format!("vmrun start \"{}\" nogui", self.path);
         println!("{}",command);
     }
+}
+#[derive(Debug)]
+
+pub struct Profile(pub fs::File, pub Option<VMS>);
+
+impl Profile {
+    pub fn new() {
+        
+    }
+    pub fn init() {
+        extern crate directories;
+        let mut path = PathBuf::from(directories::UserDirs::new().unwrap().home_dir().to_str().unwrap());
+        path.push(".vmstart");
+        if let Ok(_) = fs::create_dir(&path){
+            println!("Creating configure directory Success.")
+        }
+        path.push("vmstart.conf");
+        if let Ok(_) = fs::File::create(&path) {
+            println!("Creating configure file Success.")
+        };
+    }
+    pub fn write (&mut self) {
+        use std::io::prelude::*;
+        self.0.write_all(b"asldfj").unwrap()
+    }
+
 }
