@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 
-[target.'cfg(windows)'.dependencies]
-directorys = "4.0.1"
+directories = "4.0.1"
+json = "0.12.4"
