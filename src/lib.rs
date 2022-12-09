@@ -87,7 +87,6 @@ pub struct Profile(pub RefCell<fs::File>, pub Option<VMS>);
 
 impl Profile {
     pub fn new() -> Profile {
-        let file = RefCell::from(check_conf_file());
         let file = check_conf_file();
         match file {
             Ok(file) => {
@@ -130,31 +129,36 @@ pub fn check_conf_file() -> Result<RefCell<fs::File>, String> {
     filepath.push(".vmstart");
     filepath.push("vmstart.conf");
     let file = fs::File::create("vmstart.conf");
-    if let Err(_) = file {
-        return match fs::File::create(&filepath) {
-            Ok(file) => Ok(RefCell::new(file)),
-            Err(e) => {
-                if e.kind() == ErrorKind::PermissionDenied {
-                    eprintln!("Opening configuration file ERROR: {}", e);
-                    exit(1)
+    match file {
+        Err(_) => {
+            return match fs::File::create(&filepath) {
+                Ok(file) => Ok(RefCell::from(file)),
+                Err(e) => {
+                    if e.kind() == ErrorKind::PermissionDenied {
+                        eprintln!("Opening configuration file ERROR: {}", e);
+                        exit(1)
+                    }
+                    println!("The configuration file does not exist!");
+                    let mut line = String::new();
+                    stdout()
+                        .write("Could you want initialize this program([y|yes]|other):".as_bytes())
+                        .unwrap();
+                    stdout().flush().unwrap();
+                    stdin().read_line(&mut line).unwrap();
+                    let value = line.trim();
+                    if value == "y" || value == "yes" {
+                        create_conf_dir();
+                        if !filepath.exists() {
+                            let file = fs::File::create(&filepath).unwrap();
+                            return Ok(RefCell::from(file));
+                        };
+                    }
+                    return Err(e.to_string());
                 }
-                println!("The configuration file does not exist!");
-                let mut line = String::new();
-                stdout()
-                    .write("Could you want initialize this program([y|yes]|other):".as_bytes())
-                    .unwrap();
-                stdout().flush().unwrap();
-                stdin().read_line(&mut line).unwrap();
-                let value = line.trim();
-                if value == "y" || value == "yes" {
-                    create_conf_dir();
-                    let file = fs::File::create(&filepath).unwrap();
-                    return Ok(RefCell::new(file));
-                }
-                return Err(e.to_string());
             }
-        };
-    };
+        }
+        Ok(file) => Ok(RefCell::new(file)),
+    }
 }
 pub fn create_conf_dir() {
     //初始化配置目录及配置文件
