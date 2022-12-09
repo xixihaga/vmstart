@@ -117,49 +117,37 @@ impl Profile {
         }
     }
 }
-pub fn check_conf_file() -> Result<RefCell<fs::File>, String> {
-    //TODO: 后期优化此函数
-    let mut filepath = PathBuf::from(
-        directories::UserDirs::new()
-            .unwrap()
-            .home_dir()
-            .to_str()
-            .unwrap(),
-    );
-    filepath.push(".vmstart");
-    filepath.push("vmstart.conf");
-    let file = fs::File::create("vmstart.conf");
-    match file {
-        Err(_) => {
-            return match fs::File::create(&filepath) {
-                Ok(file) => Ok(RefCell::from(file)),
-                Err(e) => {
-                    if e.kind() == ErrorKind::PermissionDenied {
-                        eprintln!("Opening configuration file ERROR: {}", e);
-                        exit(1)
-                    }
-                    println!("The configuration file does not exist!");
-                    let mut line = String::new();
-                    stdout()
-                        .write("Could you want initialize this program([y|yes]|other):".as_bytes())
-                        .unwrap();
-                    stdout().flush().unwrap();
-                    stdin().read_line(&mut line).unwrap();
-                    let value = line.trim();
-                    if value == "y" || value == "yes" {
-                        create_conf_dir();
-                        if !filepath.exists() {
-                            let file = fs::File::create(&filepath).unwrap();
-                            return Ok(RefCell::from(file));
-                        };
-                    }
-                    return Err(e.to_string());
-                }
-            }
+pub fn check_conf_file() -> io::Result<RefCell<fs::File>> {
+    let mut filepath = PathBuf::from("vmstart.conf");
+    if !filepath.exists() {
+        filepath = PathBuf::from(
+            directories::UserDirs::new()
+                .unwrap()
+                .home_dir()
+                .to_str()
+                .unwrap(),
+        );
+        filepath.push(".vmstart\\vmstart.conf")
+    }
+    if !filepath.exists() {
+        println!("The configuration file does not exist!");
+        let mut line = String::new();
+        stdout()
+            .write("Could you want initialize this program([y|yes]|other):".as_bytes())
+            .unwrap();
+        stdout().flush().unwrap();
+        stdin().read_line(&mut line).unwrap();
+        if line.trim() != "y" && line.trim() != "yes" {
+            exit(1)
         }
-        Ok(file) => Ok(RefCell::new(file)),
+    }
+    let file = fs::File::create(&filepath);
+    match file {
+        Ok(file) => Ok(RefCell::from(file)),
+        Err(e) => Err(e)
     }
 }
+
 pub fn create_conf_dir() {
     //初始化配置目录及配置文件
     let mut path = PathBuf::from(
