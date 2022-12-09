@@ -1,30 +1,31 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::{stdin, stdout, ErrorKind, Write};
-use std::path::PathBuf;
+use std::io;
+use std::io::prelude::*;
+use std::io::{stdin, stdout, BufReader, ErrorKind, Write};
+use std::path::{Path, PathBuf};
 use std::process::exit;
 extern crate directories;
-#[derive(Debug)]
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::cell::RefCell;
+#[derive(Serialize, Deserialize, Debug)]
 pub struct VirtualMachine {
     pub name: String,
     pub path: String,
 }
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct VMS {
     pub basedir: String,
-    pub dir: Vec<String>,
-    pub vms: Option<HashMap<String, VirtualMachine>>,
+    pub vms: HashMap<String, VirtualMachine>,
 }
 
 impl VMS {
     pub fn new(basedir: &str) -> VMS {
         let basedir = String::from(basedir);
         let dir = VMS::unwrap_dir(&basedir);
-        VMS {
-            basedir,
-            dir,
-            vms: Option::None,
-        }
+        let vms = VMS::init(dir).unwrap();
+        VMS { basedir, vms }
     }
 
     fn unwrap_dir(basedir: &str) -> Vec<String> {
@@ -39,10 +40,10 @@ impl VMS {
         dir
     }
 
-    pub fn init(&mut self) {
+    pub fn init(dir: Vec<String>) -> io::Result<HashMap<String, VirtualMachine>> {
         //初始化虚拟机映射表；
         let mut vmlist = HashMap::new();
-        for vm_dir in &self.dir {
+        for vm_dir in dir {
             let mut vm_name = String::from(vm_dir.split("\\").last().unwrap());
             let mut path = String::new();
             let name = vm_name.clone();
@@ -67,7 +68,7 @@ impl VMS {
                 vmlist.insert(vm_name, VirtualMachine::new(name, path));
             }
         }
-        self.vms = Some(vmlist);
+        return Ok(vmlist);
     }
 }
 
@@ -82,16 +83,43 @@ impl VirtualMachine {
 }
 #[derive(Debug)]
 
-pub struct Profile(pub fs::File, pub Option<VMS>);
+pub struct Profile(pub RefCell<fs::File>, pub Option<VMS>);
 
 impl Profile {
     pub fn new() -> Profile {
-        let conf = check_conf_file().unwrap();
-
-        Profile(conf, None)
+        let file = RefCell::from(check_conf_file());
+        let file = check_conf_file();
+        match file {
+            Ok(file) => {
+                let mut content = String::new();
+                file.borrow_mut().read_to_string(&mut content).unwrap();
+                let result = parse_conf(content);
+                return match result {
+                    Ok((basedir, vms)) => {
+                        let vms = VMS { basedir, vms };
+                        Profile(file, Some(vms))
+                    }
+                    Err(_) => Profile(file, create_conf()),
+                };
+            }
+            Err(e) => {
+                println!("{}", e);
+                panic!()
+            }
+        }
+        //
+    }
+    pub fn save(&mut self) {
+        if let Some(vms) = &self.1 {
+            let content = serde_json::to_string(&vms);
+            if let Ok(json) = content {
+                self.0.borrow_mut().write(json.as_bytes()).unwrap();
+            }
+        }
     }
 }
-fn check_conf_file() -> Result<fs::File, &'static str> {
+pub fn check_conf_file() -> Result<RefCell<fs::File>, String> {
+    //TODO: 后期优化此函数
     let mut filepath = PathBuf::from(
         directories::UserDirs::new()
             .unwrap()
@@ -101,11 +129,10 @@ fn check_conf_file() -> Result<fs::File, &'static str> {
     );
     filepath.push(".vmstart");
     filepath.push("vmstart.conf");
-    println!("{:?}", filepath);
-    let file = fs::File::open("vmstart.conf");
+    let file = fs::File::create("vmstart.conf");
     if let Err(_) = file {
-        return match fs::File::open(&filepath) {
-            Ok(file) => Ok(file),
+        return match fs::File::create(&filepath) {
+            Ok(file) => Ok(RefCell::new(file)),
             Err(e) => {
                 if e.kind() == ErrorKind::PermissionDenied {
                     eprintln!("Opening configuration file ERROR: {}", e);
@@ -121,14 +148,13 @@ fn check_conf_file() -> Result<fs::File, &'static str> {
                 let value = line.trim();
                 if value == "y" || value == "yes" {
                     create_conf_dir();
-                    let file = fs::File::open(&filepath).unwrap();
-                    return Ok(file);
+                    let file = fs::File::create(&filepath).unwrap();
+                    return Ok(RefCell::new(file));
                 }
-                return Err("");
+                return Err(e.to_string());
             }
         };
     };
-    Err("")
 }
 pub fn create_conf_dir() {
     //初始化配置目录及配置文件
@@ -151,4 +177,41 @@ pub fn create_conf_dir() {
             println!("Creating configure file Success.")
         };
     }
+}
+fn parse_conf(content: String) -> Result<(String, HashMap<String, VirtualMachine>), String> {
+    // use serde_json::Value;
+    let vm_json: Result<Value, serde_json::Error> = serde_json::from_str(&content);
+    match vm_json {
+        Ok(vm_json) => {
+            let mut vm_map: HashMap<String, VirtualMachine> = HashMap::new();
+            let mut basedir = String::new();
+            if let Value::String(base) = &vm_json["basedir"] {
+                basedir = String::from(base)
+            };
+            if let Value::Object(vms) = &vm_json["vms"] {
+                for (k, v) in vms.iter() {
+                    vm_map.insert(
+                        k.to_string(),
+                        VirtualMachine {
+                            name: String::from(v["name"].as_str().unwrap()),
+                            path: String::from(v["path"].as_str().unwrap()),
+                        },
+                    );
+                }
+            }
+            Ok((basedir, vm_map))
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+pub fn create_conf() -> Option<VMS> {
+    let mut line = String::new();
+    stdout()
+        .write("Please enter the VMs directory:  ".as_bytes())
+        .unwrap();
+    stdout().flush().unwrap();
+    stdin().read_line(&mut line).unwrap();
+    let path = Path::new(line.trim());
+    Some(VMS::new(path.to_str().unwrap()))
 }
