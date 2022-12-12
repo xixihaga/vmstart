@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::io::prelude::*;
-use std::io::{stdin, stdout, BufReader, ErrorKind, Write};
+use std::io::{stdin, stdout, Write};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 extern crate directories;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::cell::RefCell;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VirtualMachine {
     pub name: String,
@@ -19,7 +19,16 @@ pub struct VMS {
     pub basedir: String,
     pub vms: HashMap<String, VirtualMachine>,
 }
-
+#[derive(Debug)]
+pub enum Operate {
+    Start(String),
+    Stop(String),
+    Shutdown(String),
+    Restart(String),
+    Poweroff(String),
+    Reboot(String),
+    HangUp(String),
+}
 impl VMS {
     pub fn new(basedir: &str) -> VMS {
         let basedir = String::from(basedir);
@@ -80,44 +89,147 @@ impl VirtualMachine {
         let command = format!("vmrun start \"{}\" nogui", self.path);
         println!("{}", command);
     }
+    pub fn stop(&self) {
+        let command = format!("vmrun stop \"{}\" nogui", self.path);
+        println!("{}", command);
+    }
+    pub fn shutdown(&self) {
+        let command = format!("vmrun shutdown \"{}\" nogui", self.path);
+        println!("{}", command);
+    }
+    pub fn restart(&self) {
+        let command = format!("vmrun shutdown \"{}\" nogui", self.path);
+        println!("{}", command);
+    }
+    pub fn reboot(&self) {
+        let command = format!("vmrun reboot \"{}\" nogui", self.path);
+        println!("{}", command);
+    }
+    pub fn poweroff(&self) {
+        let command = format!("vmrun poweroff \"{}\" nogui", self.path);
+        println!("{}", command);
+    }
+    pub fn hangup(&self) {
+        let command = format!("vmrun hangup \"{}\" nogui", self.path);
+        println!("{}", command);
+    }
 }
 #[derive(Debug)]
 
-pub struct Profile(pub RefCell<fs::File>, pub Option<VMS>);
+pub struct Profile(pub std::path::PathBuf, pub Option<VMS>);
 
 impl Profile {
     pub fn new() -> Profile {
-        let file = check_conf_file();
-        match file {
-            Ok(file) => {
-                let mut content = String::new();
-                file.borrow_mut().read_to_string(&mut content).unwrap();
-                let result = parse_conf(content);
-                return match result {
-                    Ok((basedir, vms)) => {
-                        let vms = VMS { basedir, vms };
-                        Profile(file, Some(vms))
+        let path = check_conf_file();
+        match path {
+            Ok(path) => {
+                let file = fs::File::open(&path);
+                match file {
+                    Ok(mut file) => {
+                        let mut content = String::new();
+                        file.read_to_string(&mut content).unwrap();
+                        let result = parse_conf(content);
+                        match result {
+                            Ok((basedir, vms)) => {
+                                let vms = VMS { basedir, vms };
+                                Profile(path, Some(vms))
+                            }
+                            Err(_) => {
+                                let vms = create_conf();
+                                Profile(path, vms)
+                            }
+                        }
                     }
-                    Err(_) => Profile(file, create_conf()),
-                };
+                    Err(e) => {
+                        eprintln!("{}", e.to_string());
+                        exit(1)
+                    }
+                }
             }
             Err(e) => {
-                println!("{}", e);
+                eprintln!("{}", e);
                 panic!()
+                // Profile(file, None)
             }
         }
-        //
     }
     pub fn save(&mut self) {
         if let Some(vms) = &self.1 {
             let content = serde_json::to_string(&vms);
             if let Ok(json) = content {
-                self.0.borrow_mut().write(json.as_bytes()).unwrap();
+                let result = fs::File::create(&self.0);
+                match result {
+                    Ok(mut file) => {
+                        file.write(json.as_bytes()).unwrap();
+                    }
+                    Err(e) => eprintln!("{}", e.to_string()),
+                }
+            }
+        }
+    }
+    pub fn get(&self) -> &VMS {
+        match &self.1 {
+            Some(vms) => &vms,
+            None => exit(1),
+        }
+    }
+    pub fn run(&self) {
+        let oper = parse_command();
+        println!("{:?}", oper);
+        match oper {
+            Operate::Start(vm_name) => {
+                let vm = self.1.as_ref().unwrap().vms.get(&vm_name);
+                match vm {
+                    Some(vm) => vm.start(),
+                    None => eprintln!("The VM {} does not exist", vm_name),
+                }
+            }
+            Operate::Stop(vm_name) => {
+                let vm = self.1.as_ref().unwrap().vms.get(&vm_name);
+                match vm {
+                    Some(vm) => vm.stop(),
+                    None => eprintln!("The VM {} does not exist", vm_name),
+                }
+            }
+            Operate::Shutdown(vm_name) => {
+                let vm = self.1.as_ref().unwrap().vms.get(&vm_name);
+                match vm {
+                    Some(vm) => vm.shutdown(),
+                    None => eprintln!("The VM {} does not exist", vm_name),
+                }
+            }
+            Operate::Restart(vm_name) => {
+                let vm = self.1.as_ref().unwrap().vms.get(&vm_name);
+                match vm {
+                    Some(vm) => vm.restart(),
+                    None => eprintln!("The VM {} does not exist", vm_name),
+                }
+            }
+            Operate::Poweroff(vm_name) => {
+                let vm = self.1.as_ref().unwrap().vms.get(&vm_name);
+                match vm {
+                    Some(vm) => vm.poweroff(),
+                    None => eprintln!("The VM {} does not exist", vm_name),
+                }
+            }
+            Operate::Reboot(vm_name) => {
+                let vm = self.1.as_ref().unwrap().vms.get(&vm_name);
+                match vm {
+                    Some(vm) => vm.reboot(),
+                    None => eprintln!("The VM {} does not exist", vm_name),
+                }
+            }
+            Operate::HangUp(vm_name) => {
+                let vm = self.1.as_ref().unwrap().vms.get(&vm_name);
+                match vm {
+                    Some(vm) => vm.hangup(),
+                    None => eprintln!("The VM {} does not exist", vm_name),
+                }
             }
         }
     }
 }
-pub fn check_conf_file() -> io::Result<RefCell<fs::File>> {
+pub fn check_conf_file() -> io::Result<std::path::PathBuf> {
     let mut filepath = PathBuf::from("vmstart.conf");
     if !filepath.exists() {
         filepath = PathBuf::from(
@@ -137,15 +249,13 @@ pub fn check_conf_file() -> io::Result<RefCell<fs::File>> {
             .unwrap();
         stdout().flush().unwrap();
         stdin().read_line(&mut line).unwrap();
-        if line.trim() != "y" && line.trim() != "yes" {
+        if line.trim() == "y" || line.trim() == "yes" {
+            create_conf_dir()
+        } else {
             exit(1)
         }
     }
-    let file = fs::File::create(&filepath);
-    match file {
-        Ok(file) => Ok(RefCell::from(file)),
-        Err(e) => Err(e)
-    }
+    Ok(filepath)
 }
 
 pub fn create_conf_dir() {
@@ -206,4 +316,38 @@ pub fn create_conf() -> Option<VMS> {
     stdin().read_line(&mut line).unwrap();
     let path = Path::new(line.trim());
     Some(VMS::new(path.to_str().unwrap()))
+}
+
+pub fn daemon() {
+    use std::env;
+    let args = env::args();
+    if args.len() > 2 {
+        for comm in args {
+            println!("{}", comm)
+        }
+    }
+}
+
+pub fn parse_command() -> Operate {
+    use std::env;
+    use Operate::*;
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 3 {
+        eprintln!("Use the following command format\n\tvmstart <Operate> <VMname>");
+        exit(1)
+    }
+    let arg = args[1].as_str();
+    match arg {
+        "start" => Start(args[2].to_string()),
+        "stop" => Stop(args[2].to_string()),
+        "shutdown" => Shutdown(args[2].to_string()),
+        "restart" => Restart(args[2].to_string()),
+        "poweroff" => Poweroff(args[2].to_string()),
+        "reboot" => Reboot(args[2].to_string()),
+        "hangup" => HangUp(args[2].to_string()),
+        _ => {
+            println!("Operate \"{}\" invalid", arg);
+            exit(1)
+        }
+    }
 }
