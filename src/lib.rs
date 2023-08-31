@@ -8,6 +8,17 @@ use std::process::exit;
 extern crate directories;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::process::Command;
+
+pub fn run_command(args: Vec<&str>) -> std::io::Result<String> {
+    let output = Command::new("vmrun").args(args).output().unwrap();
+    let content = String::from_utf8(output.stdout);
+    let msg = match content{
+        Ok(msg) => msg,
+        Err(_) => "Exec Error!".to_string(),
+    };
+    Ok(msg)
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VirtualMachine {
@@ -28,6 +39,8 @@ pub enum Operate {
     Poweroff(String),
     Reboot(String),
     HangUp(String),
+    List,
+    Scan,
 }
 impl VMS {
     pub fn new(basedir: &str) -> VMS {
@@ -86,20 +99,20 @@ impl VirtualMachine {
         VirtualMachine { name, path }
     }
     pub fn start(&self) {
-        let command = format!("vmrun start \"{}\" nogui", self.path);
-        println!("{}", command);
+        let args = vec!["start", &self.path, "nogui"];
+        run_command(args).unwrap();
     }
     pub fn stop(&self) {
-        let command = format!("vmrun stop \"{}\" nogui", self.path);
-        println!("{}", command);
+        let args = vec!["stop", &self.path];
+        run_command(args).unwrap();
     }
     pub fn shutdown(&self) {
         let command = format!("vmrun shutdown \"{}\" nogui", self.path);
         println!("{}", command);
     }
     pub fn restart(&self) {
-        let command = format!("vmrun shutdown \"{}\" nogui", self.path);
-        println!("{}", command);
+        let args = vec!["reset", &self.path];
+        run_command(args).unwrap();
     }
     pub fn reboot(&self) {
         let command = format!("vmrun reboot \"{}\" nogui", self.path);
@@ -173,7 +186,7 @@ impl Profile {
             None => exit(1),
         }
     }
-    pub fn run(&self) {
+    pub fn run(&mut self) {
         let oper = parse_command();
         println!("{:?}", oper);
         match oper {
@@ -225,6 +238,14 @@ impl Profile {
                     Some(vm) => vm.hangup(),
                     None => eprintln!("The VM {} does not exist", vm_name),
                 }
+            }
+            Operate::List => {
+                for (k, v) in self.1.as_ref().unwrap().vms.iter() {
+                    println!("{}\t{}",k, v.path )
+                }
+            }
+            Operate::Scan => {
+				create_conf_dir()
             }
         }
     }
@@ -332,7 +353,7 @@ pub fn parse_command() -> Operate {
     use std::env;
     use Operate::*;
     let args: Vec<String> = env::args().collect();
-    if args.len() < 3 {
+    if args.len() < 2 {
         eprintln!("Use the following command format\n\tvmstart <Operate> <VMname>");
         exit(1)
     }
@@ -345,6 +366,8 @@ pub fn parse_command() -> Operate {
         "poweroff" => Poweroff(args[2].to_string()),
         "reboot" => Reboot(args[2].to_string()),
         "hangup" => HangUp(args[2].to_string()),
+        "list" => List,
+        "Scan" => Scan,
         _ => {
             println!("Operate \"{}\" invalid", arg);
             exit(1)
