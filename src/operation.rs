@@ -113,9 +113,7 @@ impl Operate for Operation {
     }
     
     fn run(&self, name: &str) -> &VM{
-        println!("{:?}", name);
         let vm = self.vms.get(name);
-        println!("{:?}", vm);
         vm
     }
 }

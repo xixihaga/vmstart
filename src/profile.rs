@@ -4,8 +4,7 @@ use std::path::{PathBuf, Path};
 use std::fs::{self, File};
 use std::io::{stdin, stdout, Write, Read};
 use std::process::exit;
-use std::collections::HashMap;
-use crate::vm::{VM, VMS};
+use crate::vm::VMS;
 use crate::scan::Scan;
 
 #[derive(Debug)]
