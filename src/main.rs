@@ -1,5 +1,13 @@
-// use vmstart::parse_command;
+mod operation;
+mod scan;
+mod vm;
+mod profile;
+
+use crate::operation::{Operation, Operate};
+use vm::Active;
+
+
 fn main() {
-    let mut profile = vmstart::Profile::new();
-    profile.run();
+    let opt = Operation::new();
+    opt.execute()
 }
